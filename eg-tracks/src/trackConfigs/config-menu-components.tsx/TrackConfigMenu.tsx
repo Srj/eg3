@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useEffect, useState } from "react";
 import {
   MenuTitle,
+  PinOption,
   RemoveOption,
   TrackMoreInfo,
   MatplotMenu,
@@ -134,6 +135,13 @@ function ConfigMenuComponent(props: any) {
           onOptionSet={menuData.onConfigChange}
         />
         {menuItems}
+        {menuData.handlePin && (
+          <PinOption
+            pinned={!!menuData.allPinned}
+            numTracks={menuData.selectCount}
+            onClick={menuData.handlePin}
+          />
+        )}
         <RemoveOption
           onClick={menuData.handleDelete}
           trackId={menuData.configOptions.map((item: any) => item.trackId)}

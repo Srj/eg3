@@ -133,6 +133,7 @@ export function syncHubTracks(
         url: track.url ?? fromFile.url,
         id: track.id,
         isSelected: track.isSelected,
+        options: withBrowserOptions(fromFile.options, track.options),
       } as ITrackModel,
       hubTag,
     );
@@ -174,6 +175,25 @@ export function reloadHubTrackData(
 }
 
 /** Whether the parts of a track a hub file sets are the same. */
+/**
+ * Options set in the browser that a hub file doesn't own, kept across syncs:
+ * pinning a track is a choice about the view, not about the data.
+ */
+const BROWSER_OPTIONS = ["pinned"] as const;
+
+function withBrowserOptions(
+  fileOptions: ITrackModel["options"],
+  sessionOptions: ITrackModel["options"],
+): ITrackModel["options"] {
+  const kept = BROWSER_OPTIONS.filter(
+    (key) => (sessionOptions as Record<string, unknown> | undefined)?.[key] !== undefined,
+  );
+  if (kept.length === 0) return fileOptions; // nothing to keep: the file's as is
+  const merged = { ...(fileOptions ?? {}) } as Record<string, unknown>;
+  for (const key of kept) merged[key] = (sessionOptions as Record<string, unknown>)[key];
+  return merged as ITrackModel["options"];
+}
+
 function sameTrack(a: ITrackModel, b: ITrackModel): boolean {
   const pick = (t: ITrackModel) =>
     JSON.stringify([t.name, t.type, t.url, t.options, t.metadata]);

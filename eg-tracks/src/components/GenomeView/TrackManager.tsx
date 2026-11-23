@@ -22,6 +22,13 @@ import { trackOptionMap } from "./TrackComponents/defaultOptionsMap";
 import TrackModel from "../../models/TrackModel";
 import _, { throttle } from "lodash";
 import ConfigMenuComponent from "../../trackConfigs/config-menu-components.tsx/TrackConfigMenu";
+import {
+  isPinned,
+  PINNED_ATTR,
+  pinnedFirst,
+  usePinnedTrackIds,
+  usePinnedTrackScroll,
+} from "./pinnedTracks";
 // import HighlightMenu from "./ToolComponents/HighlightMenu";
 import TrackFactory from "./TrackComponents/TrackFactory";
 import { SelectableGenomeArea } from "./genomeNavigator/SelectableGenomeArea";
@@ -385,6 +392,13 @@ const TrackManager: React.FC<TrackManagerProps> = memo(function TrackManager({
   // New data are fetched only if the user drags to the either ends of the track
   const [messageData, setMessageData] = useState<{ [key: string]: any }>({});
   const [trackComponents, setTrackComponents] = useState<Array<any>>([]);
+  // Pinned tracks stay at the top of the view while scrolling (see pinnedTracks).
+  const pinnedTrackIds = usePinnedTrackIds(tracks);
+  usePinnedTrackScroll(
+    trackWrapperRef,
+    pinnedTrackIds,
+    trackComponents.map((c) => c.id).join("|"),
+  );
   const [isShowingEditMenu, setIsShowingEditMenu] = useState(false);
   const [selectedTool, setSelectedTool] = useState<{ [key: string]: any }>({
     isSelected: false,
@@ -1397,8 +1411,24 @@ const TrackManager: React.FC<TrackManagerProps> = memo(function TrackManager({
       for (const item of order) {
         newOrder.push(_.cloneDeep(item.trackModel));
       }
+      // Pinned tracks stay together at the top; read the flag from the
+      // current tracks, since a component's trackModel can be out of date.
+      const pinnedNow = new Set(
+        trackManagerState.current.tracks
+          .filter(isPinned)
+          .map((t: TrackModel) => String(t.id)),
+      );
+      const ordered = [
+        ...newOrder.filter((t: TrackModel) => pinnedNow.has(String(t.id))),
+        ...newOrder.filter((t: TrackModel) => !pinnedNow.has(String(t.id))),
+      ];
+      const current = new Map(
+        trackManagerState.current.tracks.map((t: TrackModel) => [String(t.id), t]),
+      );
 
-      trackManagerState.current.tracks = _.cloneDeep(newOrder);
+      trackManagerState.current.tracks = _.cloneDeep(
+        ordered.map((t: TrackModel) => current.get(String(t.id)) ?? t),
+      );
 
       onTracksChange(_.cloneDeep(trackManagerState.current.tracks));
     },
@@ -1483,6 +1513,17 @@ const TrackManager: React.FC<TrackManagerProps> = memo(function TrackManager({
       tracks: curtracks,
       fileInfos: fileInfos,
       trackId: trackId,
+      handlePin: (pin: boolean) =>
+        handlePin(Object.keys(selectedTracks.current), pin),
+      allPinned:
+        selectCount > 0 &&
+        Object.keys(selectedTracks.current).every((id) =>
+          isPinned(
+            trackManagerState.current.tracks.find(
+              (t: TrackModel) => String(t.id) === id,
+            ) ?? {},
+          ),
+        ),
     };
   }
 
@@ -1908,6 +1949,27 @@ const TrackManager: React.FC<TrackManagerProps> = memo(function TrackManager({
       if (idArr.length > 0) {
         onConfigMenuClose();
       }
+    },
+    [onTracksChange, onConfigMenuClose],
+  );
+
+  // Pins (or unpins) tracks: pinned tracks move to the top, keeping their
+  // order, and stay in view while scrolling.
+  const handlePin = useCallback(
+    (idArr: Array<any>, pin: boolean) => {
+      const ids = new Set(idArr.map(String));
+      const updated = trackManagerState.current.tracks.map((track: TrackModel) => {
+        if (!ids.has(String(track.id))) return track;
+        const config = trackManagerState.current.globalConfig?.[`${track.id}`];
+        if (config?.configOptions) config.configOptions.pinned = pin;
+        return new TrackModel({
+          ...track,
+          options: { ...track.options, pinned: pin },
+        });
+      });
+      trackManagerState.current.tracks = pinnedFirst(updated);
+      onTracksChange(_.cloneDeep(trackManagerState.current.tracks));
+      onConfigMenuClose();
     },
     [onTracksChange, onConfigMenuClose],
   );
@@ -5138,7 +5200,13 @@ const TrackManager: React.FC<TrackManagerProps> = memo(function TrackManager({
                       >
                         <div
                           key={item.id}
+                          {...(pinnedTrackIds.has(String(item.id))
+                            ? { [PINNED_ATTR]: "" }
+                            : {})}
                           style={{
+                            ...(pinnedTrackIds.has(String(item.id))
+                              ? { zIndex: 4 }
+                              : {}),
                             width: scrollPanEnabled
                               ? `${(scrollRunwayWindows * 2 + 1) * windowWidthRef.current + legendWidth}px`
                               : `${windowWidthRef.current + legendWidth}px`,

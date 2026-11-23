@@ -35,6 +35,25 @@ export function MatplotMenu(props) {
     </div>
   );
 }
+/** Pins the selected tracks to the top of the view, or unpins them. */
+export function PinOption(props: {
+  pinned: boolean;
+  numTracks: number;
+  onClick: (pin: boolean) => void;
+}) {
+  const what = props.numTracks > 1 ? ` ${props.numTracks} tracks` : "";
+  return (
+    <div
+      onClick={() => props.onClick(!props.pinned)}
+      className="TrackContextMenu-hoverable-item"
+      style={{ cursor: "pointer", paddingLeft: 5 }}
+    >
+      {/* eslint-disable-next-line jsx-a11y/accessible-emoji */}📌{" "}
+      {props.pinned ? `Unpin${what}` : `Pin${what} to top`}
+    </div>
+  );
+}
+
 export function RemoveOption(props) {
   return (
     <div
