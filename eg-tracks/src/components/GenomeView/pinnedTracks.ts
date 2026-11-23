@@ -38,6 +38,9 @@ export const PINNED_ATTR = "data-pinned-track";
 
 const SHADOW = "0 6px 6px -4px rgba(0, 0, 0, 0.35)";
 
+/** Gap (px) between the top of the visible area and the pinned tracks. */
+export const PINNED_TOP_GAP = 10;
+
 /**
  * Keeps the rows marked with PINNED_ATTR inside `wrapperRef` at the top of the
  * visible area while their scrolling ancestor scrolls. `rerunKey` should
@@ -76,7 +79,10 @@ export function usePinnedTrackScroll(
       }
       const list = wrapper.getBoundingClientRect();
       const pinnedHeight = rows.reduce((sum, row) => sum + row.offsetHeight, 0);
-      const offset = Math.max(0, Math.min(viewTop - list.top, list.height - pinnedHeight));
+      const offset = Math.max(
+        0,
+        Math.min(viewTop + PINNED_TOP_GAP - list.top, list.height - pinnedHeight),
+      );
       rows.forEach((row, i) => {
         styled.add(row);
         row.style.transform = offset > 0 ? `translateY(${offset}px)` : "";
