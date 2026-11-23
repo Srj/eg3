@@ -50,15 +50,22 @@ export default function SamplesTab() {
     };
   }, [session]);
 
-  // What the panel shows and edits; only Apply puts it into the session.
-  const [draft, setDraft] = useState<SampleViewState | null>(applied);
-  const [touched, setTouched] = useState(false);
-  // Follow the session (e.g. new hub tracks) while nothing is being edited.
-  useEffect(() => {
-    if (!touched) setDraft(applied);
-  }, [applied, touched]);
+  // What the panel shows and edits: the applied state plus any choices not
+  // applied yet. Those are saved with the session (sampleViewDraft), so they
+  // survive closing the panel and reloading; only Apply changes the tracks.
+  const state: SampleViewState | null = useMemo(() => {
+    const d = session?.sampleViewDraft;
+    if (!applied || !d) return applied;
+    return {
+      catalog: applied.catalog,
+      samples: { ...applied.samples, ...d.samples },
+      conditions: { ...applied.conditions, ...d.conditions },
+      replicates: { ...applied.replicates, ...d.replicates },
+      assays: { ...applied.assays, ...d.assays },
+      replicateColors: { ...(applied.replicateColors ?? {}), ...(d.replicateColors ?? {}) },
+    };
+  }, [applied, session?.sampleViewDraft]);
 
-  const state = draft ?? applied;
   if (!session || !state || !applied) return null;
   const cols = columns(state.catalog);
 
@@ -75,8 +82,9 @@ export default function SamplesTab() {
   }
 
   const commit = (next: SampleViewState) => {
-    setDraft(next);
-    setTouched(true);
+    const { catalog: _catalog, ...choices } = next;
+    void _catalog;
+    dispatch(updateSession({ id: session.id, changes: { sampleViewDraft: choices } }));
   };
   const selections = (s: SampleViewState) =>
     JSON.stringify([s.samples, s.conditions, s.replicates, s.assays, s.replicateColors ?? {}]);
@@ -91,16 +99,15 @@ export default function SamplesTab() {
         id: session.id,
         changes: {
           sampleView: next,
+          sampleViewDraft: null,
           tracks: applySampleView(session.tracks, next, generateUUID),
         },
       }),
     );
-    setTouched(false);
     dispatch(setNavigationTab(null)); // close the panel
   };
   const reset = () => {
-    setDraft(applied);
-    setTouched(false);
+    dispatch(updateSession({ id: session.id, changes: { sampleViewDraft: null } }));
   };
   const toggle = (
     column: "samples" | "conditions" | "replicates",

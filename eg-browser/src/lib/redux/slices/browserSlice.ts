@@ -40,6 +40,8 @@ export interface BrowserSession {
   archived?: boolean;
   /** Samples menu selections and its catalog of data tracks (see lib/sample-view). */
   sampleView?: SampleViewState;
+  /** Samples menu choices not applied yet (kept across reloads until Apply or Reset). */
+  sampleViewDraft?: Omit<SampleViewState, "catalog"> | null;
 }
 
 // MARK: - State
