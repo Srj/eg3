@@ -15,6 +15,7 @@ import {
   createSession,
   selectSessionById,
   setCurrentSession,
+  updateSession,
 } from "../redux/slices/browserSlice";
 import { addCustomTracksPool } from "../redux/slices/hubSlice";
 import { addSessionsFromBundleId, importOneSession } from "../redux/thunk/session";
@@ -85,16 +86,50 @@ async function createFromUrl(url: string, { dispatch, notify }: Ctx) {
   }
 
   // A datahub.
-  const genomeName = params.get("genome") || genomeOfHub(content);
+  try {
+    createSessionFromHub(dispatch, content, url, {
+      genome: params.get("genome") || undefined,
+      position: params.get("position") || undefined,
+      noDefaultTracks: params.has("noDefaultTracks"),
+      watch: params.get("watch") !== "false",
+    });
+  } catch (e) {
+    notify((e as Error).message);
+    dispatch(setCurrentSession(null));
+  }
+}
+
+export class HubSessionError extends Error {}
+
+export interface HubSessionOptions {
+  /** Genome name; otherwise the genome the hub's tracks name. */
+  genome?: string;
+  position?: string;
+  noDefaultTracks?: boolean;
+  /** Keep the session in sync with `url` (see hub-watch). */
+  watch?: boolean;
+  title?: string;
+}
+
+/**
+ * Makes a session (and makes it current) from a parsed datahub. `url` is where
+ * the hub lives: relative track URLs resolve against it, and it's what gets
+ * watched. Throws HubSessionError with a message for the user.
+ */
+export function createSessionFromHub(
+  dispatch: Ctx["dispatch"],
+  content: unknown[],
+  url: string,
+  options: HubSessionOptions = {},
+): string {
+  const genomeName = options.genome || genomeOfHub(content);
   const genomeConfig = genomeName ? getGenomeConfig(genomeName) : null;
   if (!genomeConfig?.genome) {
-    notify(
+    throw new HubSessionError(
       genomeName
         ? `Unknown genome "${genomeName}" for the datahub ${url}.`
-        : `Cannot tell which genome the datahub ${url} is for. Add ?genome=<name> to the link, e.g. ?genome=mm10.`,
+        : `Cannot tell which genome the datahub ${url} is for. Name the genome, e.g. mm10.`,
     );
-    dispatch(setCurrentSession(null));
-    return;
   }
   const genome = GenomeSerializer.serialize(genomeConfig);
   const hubTag = hubTagFor(url);
@@ -105,10 +140,10 @@ async function createFromUrl(url: string, { dispatch, notify }: Ctx) {
 
   // The genome's default tracks stay unless the hub brings its own ruler
   // (datahubs downloaded from a session include the whole track list), or
-  // the link says noDefaultTracks.
+  // noDefaultTracks is asked for.
   const ownRuler = hubTracks.some((t) => t.type === "ruler");
   const base: ITrackModel[] =
-    ownRuler || params.has("noDefaultTracks")
+    ownRuler || options.noDefaultTracks
       ? []
       : (genome.defaultTracks ?? []).map((t: ITrackModel) =>
           JSON.parse(JSON.stringify(t)),
@@ -122,9 +157,13 @@ async function createFromUrl(url: string, { dispatch, notify }: Ctx) {
     createSession({
       id: sessionId,
       genome,
-      viewRegion: (params.get("position") as GenomeCoordinate) || undefined,
+      viewRegion: (options.position as GenomeCoordinate) || undefined,
       additionalTracks: tracks,
     }),
   );
-  if (params.get("watch") !== "false") watchHubUrl(sessionId, url);
+  if (options.title) {
+    dispatch(updateSession({ id: sessionId, changes: { title: options.title } }));
+  }
+  if (options.watch !== false) watchHubUrl(sessionId, url);
+  return sessionId;
 }

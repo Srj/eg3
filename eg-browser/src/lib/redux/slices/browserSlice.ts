@@ -35,6 +35,8 @@ export interface BrowserSession {
   chromosomes?: Array<{ name: string; length: number }> | null;
   height?: null | number;
   width?: null | number;
+  /** Hidden from the Sessions page's main list; still opens from its link. */
+  archived?: boolean;
 }
 
 // MARK: - State
