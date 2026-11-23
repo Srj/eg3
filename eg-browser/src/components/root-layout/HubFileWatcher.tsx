@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useStore } from "react-redux";
 import JSON5 from "json5";
-import { DataHubParser, generateUUID, ITrackModel } from "wuepgg3-track";
+import { DataHubParser, generateUUID, ITrackModel, mapUrl } from "wuepgg3-track";
 
 import type { AppStore } from "@/lib/redux/createStore";
 import { selectSessionById, updateSession } from "@/lib/redux/slices/browserSlice";
@@ -9,17 +9,18 @@ import { addCustomTracksPool } from "@/lib/redux/slices/hubSlice";
 import {
   getHubWatches,
   HubWatch,
+  POLL_INTERVAL_MS,
   restoreHubWatches,
   updateHubWatch,
 } from "@/lib/hub-watch/hubWatch";
 import { hubTagOf, syncHubTracks, tagged } from "@/lib/hub-watch/syncHubTracks";
 
-const POLL_MS = 1500;
+const TICK_MS = 500;
 
 /**
- * Checks every watched datahub file for changes and syncs its session's tracks.
- * Renders nothing; mounted once in RootLayout so watching carries on while the
- * Tracks menu is closed.
+ * Re-reads every watched datahub (local file or URL) on its interval and syncs
+ * its session's tracks when it changed. Renders nothing; mounted once in
+ * RootLayout so watching carries on while the Tracks menu is closed.
  */
 export default function HubFileWatcher() {
   const store = useStore() as AppStore;
@@ -27,47 +28,106 @@ export default function HubFileWatcher() {
   useEffect(() => {
     void restoreHubWatches();
     let busy = false;
-    const tick = async () => {
+    const tick = async (force = false) => {
       if (busy) return;
       busy = true;
       try {
+        const now = Date.now();
         for (const watch of getHubWatches()) {
-          if (watch.status === "watching") await checkWatch(store, watch);
+          if (watch.status !== "watching") continue;
+          if (!force && now - watch.lastChecked < POLL_INTERVAL_MS[watch.source.kind]) {
+            continue;
+          }
+          updateHubWatch(watch.id, { lastChecked: now });
+          await checkWatch(store, watch);
         }
       } finally {
         busy = false;
       }
     };
+    const onFocus = () => void tick(true); // catch edits made in another window
     void tick();
-    const timer = window.setInterval(tick, POLL_MS);
-    window.addEventListener("focus", tick);
+    const timer = window.setInterval(tick, TICK_MS);
+    window.addEventListener("focus", onFocus);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener("focus", tick);
+      window.removeEventListener("focus", onFocus);
     };
   }, [store]);
 
   return null;
 }
 
-async function checkWatch(store: AppStore, watch: HubWatch) {
-  let file: File;
-  try {
-    file = await watch.handle.getFile();
-  } catch (e) {
-    const name = (e as DOMException)?.name;
-    updateHubWatch(watch.id, {
-      status: name === "NotAllowedError" ? "needs-permission" : "error",
-      error:
-        name === "NotFoundError"
-          ? "The file was moved or deleted."
-          : name === "NotAllowedError"
-            ? undefined
+type HubRead =
+  | { ok: true; fingerprint: string; text: () => Promise<string>; hubBase: string }
+  | { ok: false; error?: string; status?: HubWatch["status"] };
+
+/** Reads the hub's current version without parsing it. */
+async function readHub(watch: HubWatch): Promise<HubRead> {
+  if (watch.source.kind === "file") {
+    try {
+      const file = await watch.source.handle.getFile();
+      return {
+        ok: true,
+        fingerprint: `${file.lastModified}:${file.size}`,
+        text: () => file.text(),
+        hubBase: "", // relative URLs can't be resolved for a local file
+      };
+    } catch (e) {
+      const name = (e as DOMException)?.name;
+      if (name === "NotAllowedError") return { ok: false, status: "needs-permission" };
+      return {
+        ok: false,
+        status: "error",
+        error:
+          name === "NotFoundError"
+            ? "The file was moved or deleted."
             : `Cannot read the file (${name ?? e}).`,
+      };
+    }
+  }
+
+  const url = watch.source.url;
+  let text: string;
+  try {
+    // "no-cache" revalidates with the server (ETag / Last-Modified), so an
+    // unchanged hub comes back as a cheap 304 served from the browser cache.
+    const response = await fetch(mapUrl(url)!, { cache: "no-cache" });
+    if (!response.ok) {
+      // Keep watching: servers come and go (VPN, restarts).
+      return { ok: false, error: `Cannot load the hub (HTTP ${response.status}). Retrying.` };
+    }
+    text = await response.text();
+  } catch {
+    return { ok: false, error: "Cannot reach the hub (network or CORS error). Retrying." };
+  }
+  return {
+    ok: true,
+    fingerprint: hashText(text),
+    text: async () => text,
+    hubBase: url.substring(0, url.lastIndexOf("/")),
+  };
+}
+
+function hashText(text: string): string {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (Math.imul(h, 31) + text.charCodeAt(i)) | 0;
+  return `${text.length}:${h}`;
+}
+
+async function checkWatch(store: AppStore, watch: HubWatch) {
+  const read = await readHub(watch);
+  if (!read.ok) {
+    updateHubWatch(watch.id, {
+      error: read.error,
+      ...(read.status ? { status: read.status } : {}),
     });
     return;
   }
-  if (file.lastModified === watch.lastModified && file.size === watch.size) return;
+  if (read.fingerprint === watch.fingerprint) {
+    if (watch.error?.includes("Retrying")) updateHubWatch(watch.id, { error: undefined });
+    return;
+  }
 
   const session = selectSessionById(store.getState(), watch.sessionId);
   // Embedded pages can have several stores; the session may belong to another.
@@ -75,28 +135,25 @@ async function checkWatch(store: AppStore, watch: HubWatch) {
 
   let json: unknown;
   try {
-    json = JSON5.parse(await file.text());
+    json = JSON5.parse(await read.text());
   } catch (e) {
     // Often a half-written save; the next change will be picked up.
     updateHubWatch(watch.id, {
-      lastModified: file.lastModified,
-      size: file.size,
+      fingerprint: read.fingerprint,
       error: `Not valid JSON: ${(e as Error).message}. Keeping the last good version.`,
     });
     return;
   }
   if (!Array.isArray(json)) {
     updateHubWatch(watch.id, {
-      lastModified: file.lastModified,
-      size: file.size,
+      fingerprint: read.fingerprint,
       error: "A datahub must be an array of tracks. Keeping the last good version.",
     });
     return;
   }
 
-  // Relative URLs can't be resolved for a local file, so the parser skips them.
   const fileTracks = new DataHubParser()
-    .getTracksInHub(json, watch.hubTag)
+    .getTracksInHub(json, watch.hubTag, "", false, 0, read.hubBase)
     // Hubs exported from a session carry that session's track ids; drop them
     // so they can't collide with tracks already open. New ids are given below.
     .map((t) => ({ ...t, id: undefined }) as unknown as ITrackModel);
@@ -124,8 +181,7 @@ async function checkWatch(store: AppStore, watch: HubWatch) {
   );
 
   updateHubWatch(watch.id, {
-    lastModified: file.lastModified,
-    size: file.size,
+    fingerprint: read.fingerprint,
     previousKeys: result.fileKeys,
     error: undefined,
     lastSync: {

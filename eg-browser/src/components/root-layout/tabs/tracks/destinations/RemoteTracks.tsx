@@ -4,7 +4,8 @@ import React, { use, useMemo, useState } from "react";
 import Button from "@/components/ui/button/Button";
 import TabView from "@/components/ui/tab-view/TabView";
 import FacetTable from "./FacetTable";
-import WatchHubFile from "./WatchHubFile";
+import WatchHubFile, { WatchedHubList } from "./WatchHubFile";
+import { watchHubUrl } from "@/lib/hub-watch/hubWatch";
 import FileInput from "@/components/ui/input/FileInput";
 import { generateUUID, isSupportedTrackType } from "wuepgg3-track";
 // Redux Imports
@@ -580,10 +581,19 @@ function AddDataHubs() {
   const [inputUrl, setInputUrl] = useState<any>("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [watchUrl, setWatchUrl] = useState(false);
   const customTracksPool = useAppSelector(selectCustomTracksPool);
   const currentSession = useAppSelector(selectCurrentSession);
 
   const loadHub = async () => {
+    if (watchUrl) {
+      // The watcher loads it now and keeps the session in sync from then on.
+      if (!session) return;
+      watchHubUrl(session.id, inputUrl.trim());
+      setError("");
+      setInputUrl("");
+      return;
+    }
     setIsLoading(true);
     let json;
     try {
@@ -711,6 +721,14 @@ function AddDataHubs() {
             value={inputUrl}
             onChange={(e) => setInputUrl(e.target.value)}
           />
+          <label className="flex items-center gap-2 text-sm text-primary dark:text-dark-primary cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={watchUrl}
+              onChange={(e) => setWatchUrl(e.target.checked)}
+            />
+            Watch for changes (re-read every 10 s and keep tracks in sync)
+          </label>
           <Button
             active={!!inputUrl && !isLoading}
             onClick={loadHub}
@@ -721,7 +739,7 @@ function AddDataHubs() {
               padding: "4px 6px",
             }}
           >
-            {isLoading ? "Loading…" : "Load Hub"}
+            {isLoading ? "Loading…" : watchUrl ? "Load and Watch Hub" : "Load Hub"}
           </Button>
           {error && <p className="text-sm text-red-500">{error}</p>}
         </div>
@@ -758,6 +776,8 @@ function AddDataHubs() {
         </div>
 
         <WatchHubFile />
+
+        <WatchedHubList />
       </div>
     </div>
   );

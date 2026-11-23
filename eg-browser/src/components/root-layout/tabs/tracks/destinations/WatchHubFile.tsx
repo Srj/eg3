@@ -5,10 +5,12 @@ import Button from "@/components/ui/button/Button";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hooks";
 import { selectCurrentSession, updateSession } from "@/lib/redux/slices/browserSlice";
 import {
+  checkHubNow,
   getHubWatches,
   HubWatch,
-  isHubWatchSupported,
-  pickAndWatchHub,
+  isFileWatchSupported,
+  pickAndWatchHubFile,
+  POLL_INTERVAL_MS,
   resumeHubWatch,
   stopWatchingHub,
   subscribeHubWatches,
@@ -21,16 +23,13 @@ import { reloadHubTrackData } from "@/lib/hub-watch/syncHubTracks";
  */
 export default function WatchHubFile() {
   const session = useAppSelector(selectCurrentSession);
-  const watches = useSyncExternalStore(subscribeHubWatches, getHubWatches);
   const [error, setError] = useState("");
-  const supported = isHubWatchSupported();
-  const mine = watches.filter((w) => w.sessionId === session?.id);
 
   const onWatch = async () => {
     if (!session) return;
     setError("");
     try {
-      await pickAndWatchHub(session.id);
+      await pickAndWatchHubFile(session.id);
     } catch (e) {
       setError(`Could not open the file: ${(e as Error).message}`);
     }
@@ -47,7 +46,7 @@ export default function WatchHubFile() {
         "showOnHubLoad": false are left out). Track URLs must start with
         http(s).
       </p>
-      {supported ? (
+      {isFileWatchSupported() ? (
         <Button
           disabled={!session}
           onClick={onWatch}
@@ -57,11 +56,26 @@ export default function WatchHubFile() {
         </Button>
       ) : (
         <p className="text-sm text-amber-600 dark:text-amber-400">
-          Watching a file needs Chrome or Edge. In this browser, use Upload Hub
-          File above and upload it again after each change.
+          Watching a file needs Chrome or Edge. In this browser, put the hub on
+          a web server and use Remote Hub URL with "Watch for changes".
         </p>
       )}
       {error && <p className="text-sm text-red-500">{error}</p>}
+    </div>
+  );
+}
+
+/** Every hub watched in the current session, local files and URLs alike. */
+export function WatchedHubList() {
+  const session = useAppSelector(selectCurrentSession);
+  const watches = useSyncExternalStore(subscribeHubWatches, getHubWatches);
+  const mine = watches.filter((w) => w.sessionId === session?.id);
+  if (mine.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-semibold text-primary dark:text-dark-primary uppercase tracking-wider">
+        Watched Hubs
+      </p>
       {mine.map((watch) => (
         <WatchRow key={watch.id} watch={watch} />
       ))}
@@ -73,6 +87,7 @@ function WatchRow({ watch }: { watch: HubWatch }) {
   const dispatch = useAppDispatch();
   const session = useAppSelector(selectCurrentSession);
   const s = watch.lastSync;
+  const isUrl = watch.source.kind === "url";
 
   const onReloadData = () => {
     if (!session) return;
@@ -98,14 +113,18 @@ function WatchRow({ watch }: { watch: HubWatch }) {
       className="rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm flex flex-col gap-1"
       data-testid="hub-watch-row"
     >
-      <div className="flex items-center gap-2">
-        <span className={`inline-block w-2 h-2 rounded-full ${dot}`} />
-        <span className="font-mono font-semibold break-all">{watch.fileName}</span>
+      <div className="flex items-start gap-2">
+        <span className={`inline-block w-2 h-2 mt-1.5 shrink-0 rounded-full ${dot}`} />
+        <span className="font-mono font-semibold break-all">{watch.name}</span>
       </div>
+      <p className="text-primary/50 dark:text-dark-primary/50">
+        {isUrl ? "URL" : "Local file"}, checked every{" "}
+        {POLL_INTERVAL_MS[watch.source.kind] / 1000} s
+      </p>
       {watch.status === "watching" && s && (
         <p className="text-primary/70 dark:text-dark-primary/70">
           Synced {new Date(s.at).toLocaleTimeString()}: {s.shown} shown of{" "}
-          {s.total} in file
+          {s.total} in hub
           {s.added + s.updated + s.removed > 0 &&
             ` (${[
               s.added && `${s.added} added`,
@@ -117,7 +136,7 @@ function WatchRow({ watch }: { watch: HubWatch }) {
           {s.skipped > 0 && (
             <span className="text-amber-600 dark:text-amber-400">
               {" "}
-              · {s.skipped} skipped (relative URL)
+              · {s.skipped} skipped{isUrl ? "" : " (relative URL)"}
             </span>
           )}
         </p>
@@ -131,22 +150,26 @@ function WatchRow({ watch }: { watch: HubWatch }) {
         </p>
       )}
       {watch.error && <p className="text-red-500">{watch.error}</p>}
-      <div className="flex gap-2 mt-1">
+      <div className="flex flex-wrap gap-2 mt-1">
         {watch.status === "needs-permission" ? (
-          <Button
-            onClick={() => resumeHubWatch(watch.id)}
-            style={{ padding: "2px 6px" }}
-          >
+          <Button onClick={() => resumeHubWatch(watch.id)} style={{ padding: "2px 6px" }}>
             Resume
           </Button>
         ) : (
-          <Button
-            disabled={watch.status !== "watching"}
-            onClick={onReloadData}
-            style={{ padding: "2px 6px" }}
-          >
-            Reload data
-          </Button>
+          <>
+            {isUrl && (
+              <Button onClick={() => checkHubNow(watch.id)} style={{ padding: "2px 6px" }}>
+                Check now
+              </Button>
+            )}
+            <Button
+              disabled={watch.status !== "watching"}
+              onClick={onReloadData}
+              style={{ padding: "2px 6px" }}
+            >
+              Reload data
+            </Button>
+          </>
         )}
         <Button onClick={() => stopWatchingHub(watch.id)} style={{ padding: "2px 6px" }}>
           Stop watching
