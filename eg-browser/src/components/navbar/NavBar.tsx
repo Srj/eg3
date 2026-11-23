@@ -1,4 +1,5 @@
 import useCurrentGenome from "@/lib/hooks/useCurrentGenome";
+import ProfileMenu from "../profiles/ProfileMenu";
 import {
   BrowserSession,
   selectCurrentSession,
@@ -781,6 +782,7 @@ export default function NavBar(props) {
         {/* Right side: dark mode + previous version (no session) */}
         {!currentSession && (
           <div className="flex flex-row items-center gap-2 ml-auto flex-shrink-0 mr-20">
+            <ProfileMenu />
             <Button
               style={{
                 backgroundColor: "rgb(232 222 248 / var(--tw-bg-opacity, 1))",
@@ -823,6 +825,7 @@ export default function NavBar(props) {
             )}
           </div>
         )}
+        {currentSession && <ProfileMenu className="ml-auto" />}
 
         <AnimatePresence>
           {isSmallScreen && mobileMenuOpen && (

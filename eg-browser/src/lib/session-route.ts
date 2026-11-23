@@ -4,6 +4,9 @@
  *   <base>session/<id>             open the saved session with that id
  *   <base>session/create/<url>     make a session from a datahub or session
  *                                  file at <url> (encoded or not)
+ *   <base>new                      the genome picker, to start a new session
+ *   <base> or <base>sessions       the signed-in profile's session list
+ *                                  (handled by ProfileGate, not the browser)
  *
  * <base> is Vite's `base` ("/browser/"). The web server must serve index.html
  * for these paths; Vite's dev server already does.
@@ -11,7 +14,8 @@
 
 export type SessionRoute =
   | { kind: "open"; id: string }
-  | { kind: "create"; url: string };
+  | { kind: "create"; url: string }
+  | { kind: "new" };
 
 const BASE = import.meta.env.BASE_URL || "/";
 
@@ -26,6 +30,7 @@ export function sessionRoutesEnabled() {
 }
 
 export function parseSessionRoute(location: Location): SessionRoute | null {
+  if (location.pathname.replace(/\/+$/, "") === `${BASE}new`) return { kind: "new" };
   if (!location.pathname.startsWith(`${BASE}session/`)) return null;
   const rest = location.pathname.slice(`${BASE}session/`.length);
 
@@ -53,6 +58,15 @@ export function parseSessionRoute(location: Location): SessionRoute | null {
 
 /** Query params the create route reads for itself. */
 export const OWN_PARAMS = ["genome", "position", "noDefaultTracks", "watch"];
+
+/** Whether the address is the session list: <base> or <base>sessions, no query. */
+export function isSessionListPath(location: Location): boolean {
+  const path = location.pathname.replace(/\/+$/, "/");
+  return !location.search && (path === BASE || path === `${BASE}sessions` || path === `${BASE}sessions/`);
+}
+
+export const SESSION_LIST_PATH = `${BASE}sessions`;
+export const NEW_SESSION_PATH = `${BASE}new`;
 
 export function sessionPath(id: string | null): string {
   return id ? `${BASE}session/${encodeURIComponent(id)}` : BASE;

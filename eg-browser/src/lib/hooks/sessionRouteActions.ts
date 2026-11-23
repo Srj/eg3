@@ -9,7 +9,8 @@ import {
   mapUrl,
 } from "wuepgg3-track";
 
-import type { AppDispatch, RootState } from "../redux/createStore";
+import type { RootState } from "../redux/createStore";
+import type { useAppDispatch } from "../redux/hooks";
 import {
   createSession,
   selectSessionById,
@@ -22,13 +23,18 @@ import { syncHubTracks, tagged } from "../hub-watch/syncHubTracks";
 import { genomeOfHub, SessionRoute } from "../session-route";
 
 interface Ctx {
-  dispatch: AppDispatch;
+  // Same dispatch type the rest of the app uses (it accepts thunks).
+  dispatch: ReturnType<typeof useAppDispatch>;
   getState: () => RootState;
   notify: (message: string, level?: "info" | "error") => void;
 }
 
 /** Handles /session/<id> and /session/create/<url>. */
 export async function runSessionRoute(route: SessionRoute, ctx: Ctx) {
+  if (route.kind === "new") {
+    ctx.dispatch(setCurrentSession(null)); // show the genome picker
+    return;
+  }
   if (route.kind === "open") return openSession(route.id, ctx);
   return createFromUrl(route.url, ctx);
 }

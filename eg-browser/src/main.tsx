@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { useState } from "react";
 import "./index.css";
 import App from "./App.tsx";
+import ProfileGate from "./components/profiles/ProfileGate";
 import { startVersionCheck } from "./versionCheck";
 import { enableSessionRoutes } from "./lib/session-route";
 
@@ -237,4 +238,5 @@ const testTracks2 = [
 // }
 
 // createRoot(document.getElementById("root")!).render(<Root />);
-createRoot(document.getElementById("root")!).render(<App />);
+// The web app asks for a local profile first (see ProfileGate).
+createRoot(document.getElementById("root")!).render(<ProfileGate />);
