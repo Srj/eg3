@@ -42,6 +42,7 @@ import { version } from "../../../package.json";
 import TracksTab from "../root-layout/tabs/tracks/TracksTab";
 import AppsTab from "../root-layout/tabs/apps/AppsTab";
 import HelpTab from "../root-layout/tabs/HelpTab";
+import SamplesTab from "../root-layout/tabs/SamplesTab";
 import ShareTab from "../root-layout/tabs/ShareTab";
 import SettingsTab from "../root-layout/tabs/SettingsTab";
 import type { NavigationPath } from "../core-navigation/NavigationStack";
@@ -666,6 +667,19 @@ export default function NavBar(props) {
                     >
                       Help
                     </Button>
+                    <Button
+                      onClick={(e) => openTab("samples", e)}
+                      active={currentTab === "samples"}
+                      style={{
+                        backgroundColor: "#dbeafe",
+                        color: "#1e3a8a",
+                        width: "fit-content",
+                        padding: "4px 6px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Samples
+                    </Button>
                     <div className="h-8 flex flex-row items-center flex-shrink-0">
                       <Switch
                         checked={darkTheme}
@@ -911,6 +925,20 @@ export default function NavBar(props) {
                     >
                       Help
                     </Button>
+                    <Button
+                      onClick={() => {
+                        dispatch(
+                          setNavigationTab(
+                            currentTab === "samples" ? null : "samples",
+                          ),
+                        );
+                        setMobileMenuOpen(false);
+                      }}
+                      active={currentTab === "samples"}
+                      style={{ width: "100%", justifyContent: "center" }}
+                    >
+                      Samples
+                    </Button>
                     <div className="h-8 flex flex-row justify-center flex-shrink-0">
                       <Switch
                         checked={darkTheme}
@@ -994,6 +1022,7 @@ export default function NavBar(props) {
                     onNavigationPathChange={handleNavigationPathChange}
                   />
                 )}
+                {currentTab === "samples" && <SamplesTab />}
                 {currentTab === "help" && (
                   <HelpTab
                     panelCounter={panelCounter}

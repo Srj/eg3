@@ -1,3 +1,4 @@
+import type { SampleViewState } from "@/lib/sample-view/sampleView";
 import {
   GenomeCoordinate,
   IGenome,
@@ -37,6 +38,8 @@ export interface BrowserSession {
   width?: null | number;
   /** Hidden from the Sessions page's main list; still opens from its link. */
   archived?: boolean;
+  /** Samples menu selections and its catalog of data tracks (see lib/sample-view). */
+  sampleView?: SampleViewState;
 }
 
 // MARK: - State

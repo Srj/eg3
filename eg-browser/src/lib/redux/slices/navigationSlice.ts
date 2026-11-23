@@ -5,6 +5,7 @@ export type NavigationRoute =
   | "tracks"
   | "apps"
   | "help"
+  | "samples"
   | "share"
   | "settings"
   | "regions"
