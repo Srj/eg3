@@ -41,6 +41,10 @@ const SHADOW = "0 6px 6px -4px rgba(0, 0, 0, 0.35)";
 /** Gap (px) between the top of the visible area and the pinned tracks. */
 export const PINNED_TOP_GAP = 10;
 
+/** Frame drawn around the pinned group so it's easy to tell apart. */
+const FRAME_COLOR = "#2563eb";
+const FRAME_WIDTH = 2;
+
 /**
  * Keeps the rows marked with PINNED_ATTR inside `wrapperRef` at the top of the
  * visible area while their scrolling ancestor scrolls. `rerunKey` should
@@ -55,12 +59,31 @@ export function usePinnedTrackScroll(
     const wrapper = wrapperRef.current;
     if (!wrapper || pinnedIds.size === 0) return;
 
-    // Everything that can scroll the track list vertically.
+    // Everything that can scroll the track list vertically, and everything
+    // that clips or scrolls it sideways (for the frame's width).
     const scrollers: HTMLElement[] = [];
+    const sideways: HTMLElement[] = [];
     for (let el = wrapper.parentElement; el; el = el.parentElement) {
-      const { overflowY } = getComputedStyle(el);
+      const { overflowY, overflowX } = getComputedStyle(el);
       if (overflowY === "auto" || overflowY === "scroll") scrollers.push(el);
+      if (overflowX !== "visible") sideways.push(el);
     }
+
+    // The frame: an overlay above the pinned rows (a border on the rows
+    // themselves would be painted over by the track drawings).
+    const frameEl = document.createElement("div");
+    frameEl.setAttribute("data-pinned-frame", "");
+    Object.assign(frameEl.style, {
+      position: "absolute",
+      pointerEvents: "none",
+      zIndex: "5",
+      boxSizing: "border-box",
+      border: `${FRAME_WIDTH}px solid ${FRAME_COLOR}`,
+      borderRadius: "4px",
+    });
+    const restorePosition = wrapper.style.position;
+    if (getComputedStyle(wrapper).position === "static") wrapper.style.position = "relative";
+    wrapper.appendChild(frameEl);
     const background = opaqueBackground(wrapper);
     const styled = new Set<HTMLElement>();
 
@@ -89,12 +112,32 @@ export function usePinnedTrackScroll(
         row.style.backgroundColor = background;
         row.style.boxShadow = offset > 0 && i === rows.length - 1 ? SHADOW : "";
       });
+
+      // Frame the pinned group across the part of the list that's visible
+      // sideways (the list can be much wider than the view when panning).
+      let left = list.left;
+      let right = list.right;
+      for (const el of sideways) {
+        const r = el.getBoundingClientRect();
+        left = Math.max(left, r.left);
+        right = Math.min(right, r.right);
+      }
+      const firstTop = rows[0].offsetTop;
+      Object.assign(frameEl.style, {
+        display: right > left ? "block" : "none",
+        top: `${firstTop + offset}px`,
+        left: `${left - list.left}px`,
+        width: `${Math.max(0, right - left)}px`,
+        height: `${pinnedHeight}px`,
+      });
     };
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(update);
     };
 
-    for (const el of scrollers) el.addEventListener("scroll", schedule, { passive: true });
+    for (const el of new Set([...scrollers, ...sideways])) {
+      el.addEventListener("scroll", schedule, { passive: true });
+    }
     window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
     const observer = new ResizeObserver(schedule);
@@ -103,7 +146,11 @@ export function usePinnedTrackScroll(
 
     return () => {
       cancelAnimationFrame(frame);
-      for (const el of scrollers) el.removeEventListener("scroll", schedule);
+      for (const el of new Set([...scrollers, ...sideways])) {
+        el.removeEventListener("scroll", schedule);
+      }
+      frameEl.remove();
+      wrapper.style.position = restorePosition;
       window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
       observer.disconnect();
