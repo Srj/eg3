@@ -70,23 +70,51 @@ const NAME_PATTERN =
   /^([A-Za-z]+\d+[A-Za-z]*)_([^_.]+)_(?:R|BR|rep)(\d+)\.([^.]+)(?:\.(plus|minus|pos|neg|fwd|rev|\+|-))?(?:\.|$)/i;
 
 const STRAND: Record<string, string> = {
-  plus: "+", pos: "+", fwd: "+", "+": "+",
-  minus: "−", neg: "−", rev: "−", "-": "−",
+  plus: "+", pos: "+", fwd: "+", forward: "+", "+": "+",
+  minus: "−", neg: "−", rev: "−", reverse: "−", "-": "−", "−": "−",
 };
 
 const typeOf = (t: AnyTrack) => String(t.type ?? t.filetype ?? "").toLowerCase();
+
+/**
+ * Metadata keys read from a datahub track (case and spacing don't matter),
+ * e.g. "metadata": {"sample": "B49", "condition": "DMSO", "replicate": 1,
+ * "assay": "RNA-seq", "strand": "+"}.
+ */
+export const METADATA_KEYS = {
+  sample: ["sample", "samplename", "sampleid", "cellline", "cell", "line", "patient", "donor"],
+  condition: ["condition", "treatment", "group", "state"],
+  replicate: ["replicate", "rep", "br", "biologicalreplicate", "bioreplicate", "biorep"],
+  assay: ["assay", "assaytype", "experiment", "datatype"],
+  strand: ["strand"],
+} as const;
+
+const normKey = (k: string) => k.toLowerCase().replace(/[\s_.-]/g, "");
+
+function metaValue(meta: Record<string, unknown>, field: keyof typeof METADATA_KEYS): string {
+  for (const [k, v] of Object.entries(meta)) {
+    if ((METADATA_KEYS[field] as readonly string[]).includes(normKey(k))) {
+      // the browser stores some metadata as arrays (e.g. ["B49"])
+      const value = Array.isArray(v) ? v[v.length - 1] : v;
+      if (typeof value === "string" || typeof value === "number") return String(value).trim();
+    }
+  }
+  return "";
+}
 
 /** Sample, condition, replicate and assay of a track, or null if it isn't one. */
 export function parseTrack(track: AnyTrack): TrackFacets | null {
   if (track.metadata?.[AGG_MARK]) return null;
   const m = track.metadata ?? {};
-  const str = (v: unknown) => (typeof v === "string" || typeof v === "number" ? String(v) : "");
-  if (str(m.sample) && str(m.assay)) {
+  const metaSample = metaValue(m, "sample");
+  const metaAssay = metaValue(m, "assay");
+  if (metaSample && metaAssay) {
+    const metaStrand = STRAND[metaValue(m, "strand").toLowerCase()];
     return {
-      sample: str(m.sample),
-      condition: str(m.condition) || "—",
-      replicate: str(m.replicate).replace(/^(BR|R|rep)/i, "") || "1",
-      assay: str(m.assay),
+      sample: metaSample,
+      condition: metaValue(m, "condition") || "—",
+      replicate: metaValue(m, "replicate").replace(/^(BR|R|rep)/i, "") || "1",
+      assay: metaStrand ? `${metaAssay} ${metaStrand}` : metaAssay,
     };
   }
   const match = NAME_PATTERN.exec(String(track.name ?? ""));
