@@ -14,6 +14,7 @@ import {
   updateHubWatch,
 } from "@/lib/hub-watch/hubWatch";
 import { hubTagOf, syncHubTracks, tagged } from "@/lib/hub-watch/syncHubTracks";
+import { refreshCatalog } from "@/lib/sample-view/sampleView";
 
 const TICK_MS = 500;
 
@@ -168,8 +169,24 @@ async function checkWatch(store: AppStore, watch: HubWatch) {
     t.id ? t : ({ ...t, id: generateUUID() } as ITrackModel),
   );
 
-  if (result.added || result.updated || result.removed) {
-    store.dispatch(updateSession({ id: watch.sessionId, changes: { tracks } }));
+  // Keep the Samples menu's saved track definitions in step with the hub,
+  // so a track it shows again looks like the hub says.
+  const sampleView = session.sampleView;
+  const catalog = sampleView
+    ? refreshCatalog(sampleView.catalog, fileTracks.map((t) => tagged(t, watch.hubTag)))
+    : undefined;
+  const catalogChanged = !!sampleView && catalog !== sampleView.catalog;
+
+  if (result.added || result.updated || result.removed || catalogChanged) {
+    store.dispatch(
+      updateSession({
+        id: watch.sessionId,
+        changes: {
+          tracks,
+          ...(catalogChanged ? { sampleView: { ...sampleView!, catalog: catalog! } } : {}),
+        },
+      }),
+    );
   }
   // Keep the Available Tracks list (incl. tracks hidden on load) in step.
   const pool = store.getState().hub.customTracksPool;

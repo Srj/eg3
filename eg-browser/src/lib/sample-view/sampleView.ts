@@ -196,13 +196,52 @@ function withScale(options: Record<string, unknown> | undefined, s: AssaySetting
   return { ...(options ?? {}), yScale: "fixed", yMin: s.yMin, yMax: s.yMax };
 }
 
+/** The browser's default methylC colors (eg-tracks MethylCTrackComputation). */
+export const METHYLC_DEFAULT_CONTEXT_COLORS: Record<string, { color: string; background: string }> = {
+  CG: { color: "rgb(100,139,216)", background: "#d9d9d9" },
+  CHG: { color: "rgb(255,148,77)", background: "#ffe0cc" },
+  CHH: { color: "rgb(255,0,255)", background: "#ffe5ff" },
+};
+
 /**
- * Sets a track's color. `color2` too: numerical tracks draw values below
- * zero (e.g. minus-strand signal) in color2.
+ * Sets a track's color. Numerical tracks: `color` and `color2` (values below
+ * zero, e.g. minus-strand signal, are drawn in color2). methylC tracks: the
+ * methylated-fraction color of each context, keeping its background.
  */
-function withColor(options: Record<string, unknown> | undefined, color: string | null | undefined) {
+function withColor(
+  options: Record<string, unknown> | undefined,
+  color: string | null | undefined,
+  type: string,
+) {
   if (!color) return options;
+  if (type === "methylc") {
+    const current = (options?.colorsForContext ?? METHYLC_DEFAULT_CONTEXT_COLORS) as Record<
+      string,
+      { color: string; background: string }
+    >;
+    const contexts = Object.fromEntries(
+      Object.entries(current).map(([ctx, c]) => [ctx, { ...c, color }]),
+    );
+    return { ...(options ?? {}), colorsForContext: contexts };
+  }
   return { ...(options ?? {}), color, color2: color };
+}
+
+/** A track's current main color as #rrggbb (for color swatches). */
+export function trackColor(track: AnyTrack): string {
+  const o = (track.options ?? {}) as { color?: string; colorsForContext?: Record<string, { color?: string }> };
+  const raw =
+    typeOf(track) === "methylc"
+      ? (o.colorsForContext ?? METHYLC_DEFAULT_CONTEXT_COLORS).CG?.color ?? METHYLC_DEFAULT_CONTEXT_COLORS.CG.color
+      : o.color ?? "#000000";
+  return toHex(raw);
+}
+
+function toHex(color: string): string {
+  const rgb = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(color);
+  if (rgb) return "#" + rgb.slice(1, 4).map((v) => Number(v).toString(16).padStart(2, "0")).join("");
+  if (/^#[0-9a-f]{3}$/i.test(color)) return "#" + color.slice(1).split("").map((c) => c + c).join("");
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : "#000000";
 }
 
 /** The color picked for a track: its assay's, else its replicate's. */
@@ -257,7 +296,11 @@ export function applySampleView(
       keep(
         {
           ...base,
-          options: withColor(withScale(base.options, settings), pickedColor(state, e.facets)),
+          options: withColor(
+            withScale(base.options, settings),
+            pickedColor(state, e.facets),
+            typeOf(base),
+          ),
         } as AnyTrack,
         trackKey(base),
       );
@@ -291,6 +334,7 @@ export function applySampleView(
                   (i === 0
                     ? settings?.color
                     : REPLICATE_COLORS[(i - 1) % REPLICATE_COLORS.length]),
+                typeOf(o.track as AnyTrack),
               ),
             })),
           } as unknown as AnyTrack,
@@ -328,4 +372,25 @@ export function tracksMatchSelections(sessionTracks: AnyTrack[], state: SampleVi
  */
 export function isOverlayable(catalog: CatalogEntry[], assay: string): boolean {
   return catalog.some((e) => e.facets.assay === assay && NUMERICAL.includes(typeOf(e.track as AnyTrack)));
+}
+
+/**
+ * Replaces catalog entries with the current definition of the same track
+ * (matched by URL) from `tracks`, e.g. a watched hub's latest version, so a
+ * track shown again from the menu matches the hub. Returns the same array
+ * when nothing changed.
+ */
+export function refreshCatalog(catalog: CatalogEntry[], tracks: AnyTrack[]): CatalogEntry[] {
+  const latest = new Map(tracks.map((t) => [trackKey(t), t]));
+  let changed = false;
+  const next = catalog.map((e) => {
+    const t = latest.get(trackKey(e.track as AnyTrack));
+    if (!t) return e;
+    const track = clean(t);
+    const facets = parseTrack(t) ?? e.facets;
+    if (JSON.stringify(track) === JSON.stringify(e.track) && JSON.stringify(facets) === JSON.stringify(e.facets)) return e;
+    changed = true;
+    return { track, facets };
+  });
+  return changed ? next : catalog;
 }

@@ -15,6 +15,7 @@ import {
   SampleViewState,
   isOverlayable,
   scaleReady,
+  trackColor,
   tracksMatchSelections,
   updateCatalog,
 } from "@/lib/sample-view/sampleView";
@@ -219,13 +220,10 @@ export default function SamplesTab() {
               .map((e) => String(e.track.url))
           }
           region={String(session.userViewRegion ?? session.viewRegion ?? "")}
-          originalColor={(assay) =>
-            String(
-              (state.catalog.find((e) => e.facets.assay === assay)?.track.options as
-                | { color?: string }
-                | undefined)?.color ?? "#000000",
-            )
-          }
+          originalColor={(assay) => {
+            const first = state.catalog.find((e) => e.facets.assay === assay);
+            return first ? trackColor(first.track) : "#000000";
+          }}
         />
       </div>
     </div>
