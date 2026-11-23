@@ -34,6 +34,8 @@ export interface AssaySettings {
   sameScale: boolean;
   yMin: number | null;
   yMax: number | null;
+  /** One color for every track of the assay (null: the tracks' own). */
+  color?: string | null;
 }
 
 export interface SampleViewState {
@@ -43,6 +45,11 @@ export interface SampleViewState {
   /** "1", "2", ... and AGGREGATE. */
   replicates: Record<string, boolean>;
   assays: Record<string, AssaySettings>;
+  /**
+   * Color per replicate ("1", "2", ...): the lines in Aggregated overlays,
+   * and individual tracks of assays without their own color.
+   */
+  replicateColors?: Record<string, string | null>;
 }
 
 type AnyTrack = ITrackModel & {
@@ -161,6 +168,20 @@ function withScale(options: Record<string, unknown> | undefined, s: AssaySetting
   return { ...(options ?? {}), yScale: "fixed", yMin: s.yMin, yMax: s.yMax };
 }
 
+/**
+ * Sets a track's color. `color2` too: numerical tracks draw values below
+ * zero (e.g. minus-strand signal) in color2.
+ */
+function withColor(options: Record<string, unknown> | undefined, color: string | null | undefined) {
+  if (!color) return options;
+  return { ...(options ?? {}), color, color2: color };
+}
+
+/** The color picked for a track: its assay's, else its replicate's. */
+export function pickedColor(state: SampleViewState, facets: TrackFacets): string | null {
+  return state.assays[facets.assay]?.color || state.replicateColors?.[facets.replicate] || null;
+}
+
 const sameDef = (a: AnyTrack, b: AnyTrack) =>
   JSON.stringify([a.url, a.type, a.options, (a.tracks ?? []).map((t) => [t.url, t.options])]) ===
   JSON.stringify([b.url, b.type, b.options, (b.tracks ?? []).map((t) => [t.url, t.options])]);
@@ -202,7 +223,13 @@ export function applySampleView(
     const settings = state.assays[e.facets.assay];
     const base = e.track as AnyTrack;
     if (state.replicates[e.facets.replicate]) {
-      keep({ ...base, options: withScale(base.options, settings) } as AnyTrack, trackKey(base));
+      keep(
+        {
+          ...base,
+          options: withColor(withScale(base.options, settings), pickedColor(state, e.facets)),
+        } as AnyTrack,
+        trackKey(base),
+      );
     }
     // One overlay per sample/condition/assay, at its first replicate.
     const group = `${e.facets.sample}|${e.facets.condition}|${e.facets.assay}`;
@@ -225,12 +252,15 @@ export function applySampleView(
             tracks: members.map((o, i) => ({
               ...clean(o.track as AnyTrack),
               id: `${group}#${i}`,
-              options: {
-                ...((o.track as AnyTrack).options ?? {}),
-                label: `BR${o.facets.replicate}`,
-                // first replicate keeps the assay's color; the others contrast
-                ...(i > 0 ? { color: REPLICATE_COLORS[(i - 1) % REPLICATE_COLORS.length] } : {}),
-              },
+              options: withColor(
+                { ...((o.track as AnyTrack).options ?? {}), label: `BR${o.facets.replicate}` },
+                // a replicate's own color; else the first keeps the assay's
+                // (picked or original) color and the others contrast
+                state.replicateColors?.[o.facets.replicate] ||
+                  (i === 0
+                    ? settings?.color
+                    : REPLICATE_COLORS[(i - 1) % REPLICATE_COLORS.length]),
+              ),
             })),
           } as unknown as AnyTrack,
           `agg:${group}`,
