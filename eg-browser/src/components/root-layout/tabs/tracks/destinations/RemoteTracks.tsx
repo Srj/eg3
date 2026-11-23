@@ -4,6 +4,7 @@ import React, { use, useMemo, useState } from "react";
 import Button from "@/components/ui/button/Button";
 import TabView from "@/components/ui/tab-view/TabView";
 import FacetTable from "./FacetTable";
+import WatchHubFile from "./WatchHubFile";
 import FileInput from "@/components/ui/input/FileInput";
 import { generateUUID, isSupportedTrackType } from "wuepgg3-track";
 // Redux Imports
@@ -747,6 +748,16 @@ function AddDataHubs() {
             />
           </div>
         </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+          <span className="text-sm text-primary/50 dark:text-dark-primary/50">
+            or
+          </span>
+          <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+        </div>
+
+        <WatchHubFile />
       </div>
     </div>
   );

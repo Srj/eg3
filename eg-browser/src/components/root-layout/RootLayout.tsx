@@ -27,6 +27,7 @@ import {
 } from "@/lib/redux/slices/browserSlice";
 
 import GoogleAnalytics from "./GoogleAnalytics";
+import HubFileWatcher from "./HubFileWatcher";
 import useBrowserInitialization from "@/lib/hooks/useBrowserInitialization";
 import GenomeErrorBoundary from "../genome-view/GenomeErrorBoundary";
 import MouseFollowingTooltip from "../ui/tooltip/MouseFollowingTooltip";
@@ -445,6 +446,7 @@ export default function RootLayout(props: AppProps) {
           style={{ position: "relative", overflowX: "hidden" }}
         >
           {props.showDisclosure === false ? "" : <GoogleAnalytics />}
+          <HubFileWatcher />
           <div className="flex flex-col h-full text-primary dark:text-white bg-secondary dark:bg-dark-secondary ">
             {showNavBar === false ? (
               ""
