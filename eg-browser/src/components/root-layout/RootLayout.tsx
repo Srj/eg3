@@ -22,12 +22,14 @@ import {
   selectCurrentSessionId,
   setCurrentSession,
   updateCurrentSession,
+  updateSession,
   selectSessions,
   selectCurrentSession,
 } from "@/lib/redux/slices/browserSlice";
 
 import GoogleAnalytics from "./GoogleAnalytics";
 import HubFileWatcher from "./HubFileWatcher";
+import { applyDefaultPins } from "@/lib/pinning/defaultPins";
 import {
   parseSessionRoute,
   sessionRoutesEnabled,
@@ -118,6 +120,16 @@ export default function RootLayout(props: AppProps) {
     }
     showSessionInAddressBar(sessionId);
   }, [sessionId]);
+
+  // Pin the ruler, gene-name track and RepeatMasker by default, in sessions
+  // where nothing has been pinned or unpinned yet (web app only).
+  useEffect(() => {
+    if (!sessionRoutesEnabled() || !currentSession) return;
+    const tracks = applyDefaultPins(currentSession.tracks);
+    if (tracks) {
+      dispatch(updateSession({ id: currentSession.id, changes: { tracks } }));
+    }
+  }, [currentSession?.id, currentSession?.tracks]);
   const { clearHistory } = useUndoRedo();
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
   const navBarRef = useRef<HTMLDivElement>(null);
