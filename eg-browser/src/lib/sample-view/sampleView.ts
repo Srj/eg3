@@ -250,7 +250,10 @@ export function applySampleView(
     if (!on(e)) continue;
     const settings = state.assays[e.facets.assay];
     const base = e.track as AnyTrack;
-    if (state.replicates[e.facets.replicate]) {
+    // Assays that can't be overlaid (methylC, e.g. WGBS) always show every
+    // replicate; the replicate boxes and Aggregated apply to the others.
+    const allReplicates = !NUMERICAL.includes(typeOf(base));
+    if (allReplicates || state.replicates[e.facets.replicate]) {
       keep(
         {
           ...base,
@@ -319,7 +322,10 @@ export function tracksMatchSelections(sessionTracks: AnyTrack[], state: SampleVi
   return managedKeys(wanted) === managedKeys(sessionTracks);
 }
 
-/** Whether an assay can only appear as individual replicates (no overlay). */
+/**
+ * Whether an assay's replicates can be overlaid (bigWig/bedGraph). Assays that
+ * can't (methylC, e.g. WGBS) always show all their replicates.
+ */
 export function isOverlayable(catalog: CatalogEntry[], assay: string): boolean {
   return catalog.some((e) => e.facets.assay === assay && NUMERICAL.includes(typeOf(e.track as AnyTrack)));
 }

@@ -202,10 +202,6 @@ export default function SamplesTab() {
           }
         />
         <AssayTable
-          onlyAggregated={
-            !!state.replicates[AGGREGATE] &&
-            !cols.replicates.some((r) => state.replicates[r])
-          }
           overlayable={(assay) => isOverlayable(state.catalog, assay)}
           assays={cols.assays}
           settings={state.assays}
@@ -294,10 +290,8 @@ function AssayTable({
   visibleUrls,
   region,
   originalColor,
-  onlyAggregated,
   overlayable,
 }: {
-  onlyAggregated: boolean;
   overlayable: (assay: string) => boolean;
   assays: string[];
   settings: Record<string, AssaySettings>;
@@ -338,9 +332,7 @@ function AssayTable({
               region={region}
               originalColor={originalColor(a)}
               hiddenNote={
-                onlyAggregated && settings[a]?.shown && !overlayable(a)
-                  ? "Not shown: this assay can't be overlaid, so it needs BR1/BR2 ticked"
-                  : ""
+                overlayable(a) ? "" : "All replicates always shown (can't be aggregated)"
               }
             />
           ))}
@@ -414,7 +406,7 @@ function AssayRow({
           {assay}
         </label>
         {hiddenNote && (
-          <div className="text-xs text-amber-600 max-w-56" data-testid={`note-${assay}`}>
+          <div className="text-xs text-primary/50 dark:text-dark-primary/50 max-w-56" data-testid={`note-${assay}`}>
             {hiddenNote}
           </div>
         )}
