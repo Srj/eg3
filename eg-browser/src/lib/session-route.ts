@@ -2,6 +2,9 @@
  * Path routes for sessions (the browser otherwise only reads query params):
  *
  *   <base>session/<id>             open the saved session with that id
+ *   <base>session/<id>/region/<chr:start-end>
+ *                                  ...and go to that region
+ *   <base>session/<id>/gene/<name> ...and go to that gene (all its isoforms)
  *   <base>session/create/<url>     make a session from a datahub or session
  *                                  file at <url> (encoded or not)
  *   <base>new                      the genome picker, to start a new session
@@ -12,8 +15,13 @@
  * for these paths; Vite's dev server already does.
  */
 
+/** Where to go once a session is open. */
+export type SessionLocation =
+  | { kind: "region"; region: string }
+  | { kind: "gene"; gene: string };
+
 export type SessionRoute =
-  | { kind: "open"; id: string }
+  | { kind: "open"; id: string; location?: SessionLocation }
   | { kind: "create"; url: string }
   | { kind: "new" };
 
@@ -52,12 +60,37 @@ export function parseSessionRoute(location: Location): SessionRoute | null {
     return { kind: "create", url: hubQuery ? `${url}?${hubQuery}` : url };
   }
 
-  const id = decodeURIComponent(rest.replace(/\/+$/, ""));
-  return id && !id.includes("/") ? { kind: "open", id } : null;
+  // <id>, <id>/region/<locus> or <id>/gene/<name>
+  const [rawId, where, ...valueParts] = rest.replace(/\/+$/, "").split("/");
+  const id = safeDecode(rawId ?? "");
+  if (!id) return null;
+  if (!where) return { kind: "open", id };
+  const value = safeDecode(valueParts.join("/")).trim();
+  if (!value) return { kind: "open", id };
+  if (where === "region") {
+    // "chr7:27,100,000-27,250,000" works too
+    return { kind: "open", id, location: { kind: "region", region: value.replace(/,/g, "") } };
+  }
+  if (where === "gene") return { kind: "open", id, location: { kind: "gene", gene: value } };
+  return null;
+}
+
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
+/** Link to a session at a region or gene. */
+export function sessionLocationPath(id: string, location: SessionLocation): string {
+  const value = location.kind === "region" ? location.region : location.gene;
+  return `${sessionPath(id)}/${location.kind}/${encodeURIComponent(value)}`;
 }
 
 /** Query params the create route reads for itself. */
-export const OWN_PARAMS = ["genome", "position", "noDefaultTracks", "watch"];
+export const OWN_PARAMS = ["genome", "position", "gene", "noDefaultTracks", "watch"];
 
 /** Whether the address is the session list: <base> or <base>sessions, no query. */
 export function isSessionListPath(location: Location): boolean {

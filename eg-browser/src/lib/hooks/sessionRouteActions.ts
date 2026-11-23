@@ -21,7 +21,8 @@ import { addCustomTracksPool } from "../redux/slices/hubSlice";
 import { addSessionsFromBundleId, importOneSession } from "../redux/thunk/session";
 import { hubTagFor, watchHubUrl } from "../hub-watch/hubWatch";
 import { syncHubTracks, tagged } from "../hub-watch/syncHubTracks";
-import { genomeOfHub, SessionRoute } from "../session-route";
+import { genomeOfHub, SessionLocation, SessionRoute } from "../session-route";
+import { resolveSessionLocation, showRegion } from "./sessionLocation";
 
 interface Ctx {
   // Same dispatch type the rest of the app uses (it accepts thunks).
@@ -36,19 +37,35 @@ export async function runSessionRoute(route: SessionRoute, ctx: Ctx) {
     ctx.dispatch(setCurrentSession(null)); // show the genome picker
     return;
   }
-  if (route.kind === "open") return openSession(route.id, ctx);
+  if (route.kind === "open") return openSession(route.id, ctx, route.location);
   return createFromUrl(route.url, ctx);
 }
 
-async function openSession(id: string, { dispatch, getState, notify }: Ctx) {
-  if (selectSessionById(getState(), id)) {
+/** Opens a session by id, at `location` if given. */
+async function openSession(
+  id: string,
+  { dispatch, getState, notify }: Ctx,
+  location?: SessionLocation,
+) {
+  const session = selectSessionById(getState(), id);
+  if (session) {
+    let region: string | null = null;
+    if (location) {
+      // Find the place first, then show the session already there.
+      if (location.kind === "gene") dispatch(setCurrentSession(null));
+      const found = await resolveSessionLocation(location, session.genomeId);
+      if ("error" in found) notify(found.error);
+      else region = found.region;
+    }
     dispatch(setCurrentSession(id));
+    if (region) showRegion(dispatch, region);
     return;
   }
   // Sessions are saved in this browser only. A link from elsewhere may be a
   // shared session bundle id instead, so try that before giving up.
   try {
     await dispatch(addSessionsFromBundleId(id)).unwrap();
+    if (location) notify("Opened the shared session; go to the location with the search box.", "info");
   } catch {
     notify(
       `No session with id "${id}" is saved in this browser, and it is not a shared session bundle id. Showing the genome picker instead.`,
@@ -57,7 +74,8 @@ async function openSession(id: string, { dispatch, getState, notify }: Ctx) {
   }
 }
 
-async function createFromUrl(url: string, { dispatch, notify }: Ctx) {
+async function createFromUrl(url: string, ctx: Ctx) {
+  const { dispatch, notify } = ctx;
   const params = new URLSearchParams(window.location.search);
   let content: unknown;
   try {
@@ -85,17 +103,26 @@ async function createFromUrl(url: string, { dispatch, notify }: Ctx) {
     return;
   }
 
-  // A datahub.
+  // A datahub. A ?gene= is found first, so the session opens there.
+  let position = params.get("position") || undefined;
+  const gene = params.get("gene");
+  const genome = params.get("genome") || genomeOfHub(content);
+  if (gene && genome) {
+    const found = await resolveSessionLocation({ kind: "gene", gene }, genome);
+    if ("error" in found) notify(found.error);
+    else position = found.region;
+  }
   try {
     createSessionFromHub(dispatch, content, url, {
       genome: params.get("genome") || undefined,
-      position: params.get("position") || undefined,
+      position,
       noDefaultTracks: params.has("noDefaultTracks"),
       watch: params.get("watch") !== "false",
     });
   } catch (e) {
     notify((e as Error).message);
     dispatch(setCurrentSession(null));
+    return;
   }
 }
 
