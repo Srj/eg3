@@ -81,7 +81,10 @@ export interface SyncResult {
  *   redraws a track's options when its id changes (bytes already fetched still
  *   come from the browser's HTTP cache);
  * - a track no longer in the file is removed;
- * - a track new to the file is added at the end if it has `showOnHubLoad`.
+ * - a track new to the file is added at the end unless it has
+ *   `showOnHubLoad: false`. (Unlike a one-off hub load, where tracks are
+ *   hidden by default: a watched file mirrors what you want on screen, and the
+ *   browser's own "Download as datahub" files don't set `showOnHubLoad`.)
  *   On later syncs only tracks that weren't in the previous version of the file
  *   count as new, so a track you removed by hand stays removed until it is
  *   added to the file again.
@@ -143,7 +146,7 @@ export function syncHubTracks(
 
   let added = 0;
   for (const [key, track] of fileKeyed) {
-    if (inSession.has(key) || !track.showOnHubLoad) continue;
+    if (inSession.has(key) || track.showOnHubLoad === false) continue;
     if (previous && previous.has(key)) continue;
     tracks.push(tagged(track as ITrackModel, hubTag));
     added++;

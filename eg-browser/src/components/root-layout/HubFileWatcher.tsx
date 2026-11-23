@@ -95,7 +95,11 @@ async function checkWatch(store: AppStore, watch: HubWatch) {
   }
 
   // Relative URLs can't be resolved for a local file, so the parser skips them.
-  const fileTracks = new DataHubParser().getTracksInHub(json, watch.hubTag);
+  const fileTracks = new DataHubParser()
+    .getTracksInHub(json, watch.hubTag)
+    // Hubs exported from a session carry that session's track ids; drop them
+    // so they can't collide with tracks already open. New ids are given below.
+    .map((t) => ({ ...t, id: undefined }) as unknown as ITrackModel);
   const result = syncHubTracks(
     session.tracks,
     fileTracks,

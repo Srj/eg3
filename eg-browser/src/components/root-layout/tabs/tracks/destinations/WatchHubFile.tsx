@@ -43,8 +43,9 @@ export default function WatchHubFile() {
       </p>
       <p className="text-sm text-primary/60 dark:text-dark-primary/60">
         Pick a datahub .json on your computer. Whenever you save it, tracks in
-        this session are added, updated or removed to match. Track URLs must
-        start with http(s).
+        this session are added, updated or removed to match (tracks with
+        "showOnHubLoad": false are left out). Track URLs must start with
+        http(s).
       </p>
       {supported ? (
         <Button
