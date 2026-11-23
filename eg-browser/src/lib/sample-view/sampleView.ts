@@ -302,3 +302,24 @@ export function applySampleView(
   const at = firstManaged < 0 ? others.length : sessionTracks.slice(0, firstManaged).filter((t) => !isManaged(t)).length;
   return [...others.slice(0, at), ...wanted, ...others.slice(at)];
 }
+
+/**
+ * Whether the session's sample tracks already match the selections. False
+ * also when tracks were added or removed some other way (right-click
+ * Remove, a hub change...), so Apply can bring the session back in line.
+ */
+export function tracksMatchSelections(sessionTracks: AnyTrack[], state: SampleViewState): boolean {
+  const managedKeys = (tracks: AnyTrack[]) =>
+    tracks
+      .filter((t) => parseTrack(t) || t.metadata?.[AGG_MARK])
+      .map((t) => (t.metadata?.[AGG_MARK] ? `agg:${t.metadata[AGG_MARK]}` : trackKey(t)))
+      .join("\n");
+  let n = 0;
+  const wanted = applySampleView(sessionTracks, state, () => `tmp${++n}`);
+  return managedKeys(wanted) === managedKeys(sessionTracks);
+}
+
+/** Whether an assay can only appear as individual replicates (no overlay). */
+export function isOverlayable(catalog: CatalogEntry[], assay: string): boolean {
+  return catalog.some((e) => e.facets.assay === assay && NUMERICAL.includes(typeOf(e.track as AnyTrack)));
+}

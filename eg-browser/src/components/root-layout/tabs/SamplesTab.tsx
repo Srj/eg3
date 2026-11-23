@@ -13,7 +13,9 @@ import {
   initialState,
   parseTrack,
   SampleViewState,
+  isOverlayable,
   scaleReady,
+  tracksMatchSelections,
   updateCatalog,
 } from "@/lib/sample-view/sampleView";
 import { bigWigRange } from "@/lib/sample-view/autoScale";
@@ -77,7 +79,10 @@ export default function SamplesTab() {
   };
   const selections = (s: SampleViewState) =>
     JSON.stringify([s.samples, s.conditions, s.replicates, s.assays, s.replicateColors ?? {}]);
-  const pending = selections(state) !== selections(applied);
+  // Also pending when the tracks on screen don't match the selections
+  // (e.g. some were removed with right-click Remove): Apply restores them.
+  const outOfSync = !tracksMatchSelections(session.tracks, state);
+  const pending = selections(state) !== selections(applied) || outOfSync;
   const apply = () => {
     const next = { ...state, catalog: applied.catalog };
     dispatch(
@@ -149,9 +154,11 @@ export default function SamplesTab() {
           className={`text-xs ${pending ? "text-amber-600" : "text-primary/50 dark:text-dark-primary/50"}`}
           data-testid="samples-status"
         >
-          {pending
+          {selections(state) !== selections(applied)
             ? "Changes not applied yet. Apply updates the tracks and closes this panel."
-            : "No changes"}
+            : outOfSync
+              ? "Some tracks were added or removed outside this menu. Apply brings them back in line with these selections."
+              : "No changes"}
         </span>
       </div>
 
@@ -195,6 +202,11 @@ export default function SamplesTab() {
           }
         />
         <AssayTable
+          onlyAggregated={
+            !!state.replicates[AGGREGATE] &&
+            !cols.replicates.some((r) => state.replicates[r])
+          }
+          overlayable={(assay) => isOverlayable(state.catalog, assay)}
           assays={cols.assays}
           settings={state.assays}
           onChange={setAssay}
@@ -282,7 +294,11 @@ function AssayTable({
   visibleUrls,
   region,
   originalColor,
+  onlyAggregated,
+  overlayable,
 }: {
+  onlyAggregated: boolean;
+  overlayable: (assay: string) => boolean;
   assays: string[];
   settings: Record<string, AssaySettings>;
   onChange: (assay: string, changes: Partial<AssaySettings>) => void;
@@ -321,6 +337,11 @@ function AssayTable({
               urls={() => visibleUrls(a)}
               region={region}
               originalColor={originalColor(a)}
+              hiddenNote={
+                onlyAggregated && settings[a]?.shown && !overlayable(a)
+                  ? "Not shown: this assay can't be overlaid, so it needs BR1/BR2 ticked"
+                  : ""
+              }
             />
           ))}
         </tbody>
@@ -336,7 +357,9 @@ function AssayRow({
   urls,
   region,
   originalColor,
+  hiddenNote,
 }: {
+  hiddenNote: string;
   assay: string;
   s: AssaySettings;
   onChange: (changes: Partial<AssaySettings>) => void;
@@ -390,6 +413,11 @@ function AssayRow({
           />
           {assay}
         </label>
+        {hiddenNote && (
+          <div className="text-xs text-amber-600 max-w-56" data-testid={`note-${assay}`}>
+            {hiddenNote}
+          </div>
+        )}
       </td>
       <td className="text-center">
         <input
