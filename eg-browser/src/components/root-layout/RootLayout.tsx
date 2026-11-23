@@ -28,6 +28,11 @@ import {
 
 import GoogleAnalytics from "./GoogleAnalytics";
 import HubFileWatcher from "./HubFileWatcher";
+import {
+  parseSessionRoute,
+  sessionRoutesEnabled,
+  showSessionInAddressBar,
+} from "@/lib/session-route";
 import useBrowserInitialization from "@/lib/hooks/useBrowserInitialization";
 import GenomeErrorBoundary from "../genome-view/GenomeErrorBoundary";
 import MouseFollowingTooltip from "../ui/tooltip/MouseFollowingTooltip";
@@ -100,6 +105,19 @@ export default function RootLayout(props: AppProps) {
   const sessions = useAppSelector(selectSessions);
   const currentSession = useAppSelector(selectCurrentSession);
   const darkTheme = useAppSelector(selectDarkTheme);
+
+  // Keep the address bar on /session/<id> for the open session, so a reload
+  // or bookmark comes back to it. Skipped on the first render when the page
+  // was opened with a session route, which is still being loaded then.
+  const addressBarSynced = useRef(false);
+  useEffect(() => {
+    if (!sessionRoutesEnabled()) return;
+    if (!addressBarSynced.current) {
+      addressBarSynced.current = true;
+      if (parseSessionRoute(window.location)) return;
+    }
+    showSessionInAddressBar(sessionId);
+  }, [sessionId]);
   const { clearHistory } = useUndoRedo();
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
   const navBarRef = useRef<HTMLDivElement>(null);

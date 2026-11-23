@@ -69,7 +69,7 @@ export function isFileWatchSupported(): boolean {
   return typeof window !== "undefined" && "showOpenFilePicker" in window;
 }
 
-function hubTagFor(name: string): string {
+export function hubTagFor(name: string): string {
   return `Watched: ${name}`;
 }
 

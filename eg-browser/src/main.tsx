@@ -3,6 +3,7 @@ import { useState } from "react";
 import "./index.css";
 import App from "./App.tsx";
 import { startVersionCheck } from "./versionCheck";
+import { enableSessionRoutes } from "./lib/session-route";
 
 // Remove service workers left behind by older deployments so they can't
 // serve stale cached builds. Version updates are handled by polling instead.
@@ -12,6 +13,7 @@ navigator.serviceWorker
   .catch(() => {});
 
 startVersionCheck();
+enableSessionRoutes();
 
 const testTracks1 = [
   {

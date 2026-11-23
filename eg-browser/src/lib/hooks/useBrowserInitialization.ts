@@ -30,6 +30,8 @@ import { generateUUID } from "wuepgg3-track";
 
 import { addCustomTracksPool } from "../redux/slices/hubSlice";
 import { refreshLocalGenomes } from "../redux/thunk/genome-hub";
+import { parseSessionRoute, sessionRoutesEnabled } from "../session-route";
+import { runSessionRoute } from "./sessionRouteActions";
 
 export default function useBrowserInitialization() {
   const dispatch = useAppDispatch();
@@ -53,6 +55,17 @@ export default function useBrowserInitialization() {
     // they never hold up the page that is loading underneath.
     const notify = (message: string, level: "info" | "error" = "error") =>
       dispatch(showNotice({ message, level }));
+
+    // Path routes: /session/<id> and /session/create/<url> (see session-route).
+    const route = sessionRoutesEnabled() ? parseSessionRoute(window.location) : null;
+    if (route) {
+      void runSessionRoute(route, {
+        dispatch,
+        getState: store.getState,
+        notify,
+      });
+      return;
+    }
 
     // Reloading a link must not pile up sessions: if this tab already made a
     // session from this exact link and it still exists, go back to it (with
